@@ -5,8 +5,47 @@
 #include <writer.h>
 #include <stringbuffer.h>
 #include <string>
+#include <thread>
+
 
 #pragma warning(disable: 4996)
+
+int jsonLength(char* buff) {
+	int len = 0;
+	for (size_t i = 0; i < strlen(buff); ++i) {
+		if (buff[i] == '}') {
+			len = i + 1;
+			break;
+		}
+	}
+	return len;
+}
+
+void process_client(SOCKET sock, int UUID) {
+	while (1) {
+		char buff[512];
+		int bytes = recv(sock, buff, 512, 0);
+		if (bytes > 0) {
+
+			rapidjson::Document document;
+			document.Parse(buff, jsonLength(buff));
+
+			std::string comAnswer = document["command"].GetString();
+
+			if (comAnswer == "message") {
+				std::string incomeMsg = document["body"].GetString();
+				std::string user = document["sender login"].GetString();
+				std::cout << user << ": " << incomeMsg << std::endl;
+
+				std::string mess = "{\"id\":\"" + std::to_string(UUID) + "\",\"command\":\"message_reply\","
+					+ "\"status\":\"ok\",\"client id\":\"" + std::to_string(UUID) + "\"}";
+				send(sock, mess.c_str(), strlen(mess.c_str()), NULL);
+			}
+		}
+	}
+}
+
+
 
 int main(int argc, char* argv[]) {
 
@@ -14,6 +53,7 @@ int main(int argc, char* argv[]) {
 
 	const char* hello = "{\"id\":\"1\",\"command\":\"HELLO\"}";
 
+	int UUID;
 
 	//WSAStartup
 	WSAData wsaData;
@@ -34,40 +74,47 @@ int main(int argc, char* argv[]) {
 		std::cout << "Error: failed connect to server.\n";
 		return 1;
 	}
-	std::cout << "CONNECTED\n";
+	std::cout << "Welcome to myChatServer\n";
 	
 	bool handShakeFlag = false;
 	bool logged = false;
 
-
 	send(Connection, hello, strlen(hello), NULL);
-	do
-	{
+	
+	do{
 		recv(Connection, buff, 512, 0);
 
-		if (*buff == '{') {
+		rapidjson::Document document;
+		document.Parse(buff, jsonLength(buff));
 
-			int len = 0;
-			for (size_t i = 0; i < strlen(buff); ++i) {
-				if (buff[i] == '}') {
-					len = i + 1;
-					break;
-				}
-			}
+		std::string comAnswer = document["command"].GetString();
 
-			rapidjson::Document document;
-			document.Parse(buff, len);
-
-			std::string comAnswer = document["command"].GetString();
-
-			if (comAnswer == "HELLO") {
-				handShakeFlag = true;
-				std::cout << "RECEIVE HELLO" << std::endl;
+		if (comAnswer == "HELLO") {
+			handShakeFlag = true;
 			
-				const char* auth = "{\"id\":\"1\",\"command\":\"login\",\"login\":\"ASD\",\"password\":\"123123\"}";
+			std::string login;
+			std::string password;
 
-				send(Connection, auth, strlen(auth), NULL);
+			std::cout << "Please enter your login: " << std::endl;
+			std::getline(std::cin, login);
+
+			if (login.size() == 0) {
+				std::cout << "Login can't be empty, please try again: " << std::endl;
+				std::getline(std::cin, login);
 			}
+
+			std::cout << "Please enter your password: " << std::endl;
+			std::getline(std::cin, password);
+
+			if (password.size() == 0) {
+				std::cout << "Password can't be empty, please try again: " << std::endl;
+				std::getline(std::cin, login);
+			}
+
+			std::string auth = "{\"id\":\"1\",\"command\":\"login\",\"login\":\"" + login +
+				"\",\"password\":\"" + password + "\"}";
+				
+			send(Connection, auth.c_str(), strlen(auth.c_str()), NULL);
 		}
 	} while (!handShakeFlag);
 
@@ -75,16 +122,8 @@ int main(int argc, char* argv[]) {
 
 		recv(Connection, buff, 512, 0);
 
-		int len = 0;
-		for (size_t i = 0; i < strlen(buff); ++i) {
-			if (buff[i] == '}') {
-				len = i + 1;
-				break;
-			}
-		}
-
 		rapidjson::Document document;
-		document.Parse(buff, len);
+		document.Parse(buff, jsonLength(buff));
 
 		std::string comAnswer = document["command"].GetString();
 
@@ -95,22 +134,42 @@ int main(int argc, char* argv[]) {
 			std::string status = document["status"].GetString();
 
 			if (status == "ok") {
+				std::cout << "Now you can write in chat" << std::endl;
 				logged = true;
+				UUID = std::stoi(document["session"].GetString());
 			}
 		}
 	}
 
-	while (1) {
+	std::thread my_thread(process_client, Connection, UUID);
+
+	bool running = true;
+	while (running) {
+
 
 		std::string body;
 		std::getline(std::cin, body);
 
-		std::string mess = "{\"id\":\"1\",\"command\":\"message\",\"body\":\"";
-		mess = mess + body + "\",\"session\":\"123123\"}";
-		send(Connection, mess.c_str(), strlen(mess.c_str()), NULL);
-
+		if (body[0] == '\\') {
+			if (body == "\\quit") {
+				//quit
+				running = false;
+				std::cout << "disconnected from server" << std::endl;
+			}
+			else if (body == "\\ping") {
+				//ping
+			}
+		}
+		else {
+			std::string mess = "{\"id\":\"" + std::to_string(UUID) + "\",\"command\":\"message\",\"body\":\""
+				+ body + "\",\"session\":\"" + std::to_string(UUID) + "\"}";
+			send(Connection, mess.c_str(), strlen(mess.c_str()), NULL);
+		}
+		
 
 	}
+
+	my_thread.detach();
 
 	system("pause");
 	return 0;
