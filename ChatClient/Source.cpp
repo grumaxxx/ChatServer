@@ -41,11 +41,51 @@ void process_client(SOCKET sock, int UUID) {
 					+ "\"status\":\"ok\",\"client id\":\"" + std::to_string(UUID) + "\"}";
 				send(sock, mess.c_str(), strlen(mess.c_str()), NULL);
 			}
+			else if (comAnswer == "ping_reply") {
+				std::string status = document["status"].GetString();
+				if (status == "ok") {
+					std::cout << "pong" << std::endl;
+				}
+			}
+			else if (comAnswer == "logout_reply") {
+					std::string status = document["status"].GetString();
+				if (status == "ok") {
+					std::cout << "disconnected from server" << std::endl;
+				}
+				else if (status == "failed"){
+					std::string error = document["message"].GetString();
+					std::cout << error << std::endl;
+				}
+			}
 		}
 	}
 }
 
+void loginProcces(SOCKET sock) {
+	std::string login;
+	std::string password;
 
+	std::cout << "Please enter your login: " << std::endl;
+	std::getline(std::cin, login);
+
+	if (login.size() == 0) {
+		std::cout << "Login can't be empty, please try again: " << std::endl;
+		std::getline(std::cin, login);
+	}
+
+	std::cout << "Please enter your password: " << std::endl;
+	std::getline(std::cin, password);
+
+	if (password.size() == 0) {
+		std::cout << "Password can't be empty, please try again: " << std::endl;
+		std::getline(std::cin, login);
+	}
+
+	std::string auth = "{\"id\":\"1\",\"command\":\"login\",\"login\":\"" + login +
+		"\",\"password\":\"" + password + "\"}";
+
+	send(sock, auth.c_str(), strlen(auth.c_str()), NULL);
+}
 
 int main(int argc, char* argv[]) {
 
@@ -54,6 +94,7 @@ int main(int argc, char* argv[]) {
 	const char* hello = "{\"id\":\"1\",\"command\":\"HELLO\"}";
 
 	int UUID;
+	std::string sUUID;
 
 	//WSAStartup
 	WSAData wsaData;
@@ -91,30 +132,8 @@ int main(int argc, char* argv[]) {
 
 		if (comAnswer == "HELLO") {
 			handShakeFlag = true;
-			
-			std::string login;
-			std::string password;
 
-			std::cout << "Please enter your login: " << std::endl;
-			std::getline(std::cin, login);
-
-			if (login.size() == 0) {
-				std::cout << "Login can't be empty, please try again: " << std::endl;
-				std::getline(std::cin, login);
-			}
-
-			std::cout << "Please enter your password: " << std::endl;
-			std::getline(std::cin, password);
-
-			if (password.size() == 0) {
-				std::cout << "Password can't be empty, please try again: " << std::endl;
-				std::getline(std::cin, login);
-			}
-
-			std::string auth = "{\"id\":\"1\",\"command\":\"login\",\"login\":\"" + login +
-				"\",\"password\":\"" + password + "\"}";
-				
-			send(Connection, auth.c_str(), strlen(auth.c_str()), NULL);
+			loginProcces(Connection);
 		}
 	} while (!handShakeFlag);
 
@@ -128,15 +147,23 @@ int main(int argc, char* argv[]) {
 		std::string comAnswer = document["command"].GetString();
 
 		if (comAnswer == "login") {
-			std::cout << "status is: " << document["status"].GetString() << std::endl;
-			std::cout << "session id: " << document["session"].GetString() << std::endl;
-
 			std::string status = document["status"].GetString();
 
+			std::cout << "status is: " << status << std::endl;
+
 			if (status == "ok") {
-				std::cout << "Now you can write in chat" << std::endl;
 				logged = true;
+				std::cout << "session id: " << document["session"].GetString() << std::endl;
+				std::cout << "Now you can write in chat" << std::endl;
 				UUID = std::stoi(document["session"].GetString());
+				sUUID = std::to_string(UUID);
+			}
+			else if (status == "failed") {
+				std::string error = document["message"].GetString();
+				std::cout << "Error: " << error << std::endl;
+				std::cout << "Please try again" << std::endl;
+
+				loginProcces(Connection);
 			}
 		}
 	}
@@ -152,17 +179,20 @@ int main(int argc, char* argv[]) {
 
 		if (body[0] == '\\') {
 			if (body == "\\quit") {
-				//quit
+				std::string pong = "{\"id\":\"" + sUUID
+					+ "\",\"command\":\"logout\",\"session\":\"" + sUUID + "\"}";
+				send(Connection, pong.c_str(), pong.size() + 1, NULL);
 				running = false;
-				std::cout << "disconnected from server" << std::endl;
 			}
 			else if (body == "\\ping") {
-				//ping
+				std::string pong = "{\"id\":\"" + sUUID
+					+ "\",\"command\":\"ping\",\"session\":\"" + sUUID + "\"}";
+				send(Connection, pong.c_str(), pong.size() + 1, NULL);
 			}
 		}
 		else {
-			std::string mess = "{\"id\":\"" + std::to_string(UUID) + "\",\"command\":\"message\",\"body\":\""
-				+ body + "\",\"session\":\"" + std::to_string(UUID) + "\"}";
+			std::string mess = "{\"id\":\"" + sUUID + "\",\"command\":\"message\",\"body\":\""
+				+ body + "\",\"session\":\"" + sUUID + "\"}";
 			send(Connection, mess.c_str(), strlen(mess.c_str()), NULL);
 		}
 		

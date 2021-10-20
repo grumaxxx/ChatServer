@@ -12,17 +12,6 @@
 
 #pragma warning(disable:4996) 
 
-int jsonLength(char* buff) {
-	int len = 0;
-	for (size_t i = 0; i < strlen(buff); ++i) {
-		if (buff[i] == '}') {
-			len = i + 1;
-			break;
-		}
-	}
-	return len;
-}
-
 void main()
 {
 	Server serv;
@@ -59,16 +48,7 @@ void main()
 				FD_SET(client, &master);
 
 				// Send a welcome message to the connected client
-				recv(client, buf, 4096, 0);
-
-				rapidjson::Document document;
-				document.Parse(buf, jsonLength(buf));
-
-				std::string comAnswer = document["command"].GetString();
-
-				if (comAnswer == "HELLO") {
-					serv.sendHello(client);
-				}
+				serv.newConnection(buf, client);
 			}
 			else // It's an inbound message
 			{
@@ -85,42 +65,7 @@ void main()
 				}
 				else
 				{
-					rapidjson::Document document;
-					document.Parse(buf, jsonLength(buf));
-
-					std::string command = document["command"].GetString();
-
-					if (command == "login") {
-
-						std::string login = document["login"].GetString();
-						std::string password = document["password"].GetString();
-
-						if (serv.checkUser(login)) {
-							if (serv.checkPass(login, password)) {
-								std::cout << "connected user with login:" << login << std::endl;
-							}
-							else {
-								serv.addUser(login, password, Server::StatusCode::notLogged, sock);
-							}
-						}
-						else {
-							
-							serv.addUser(login, password, Server::StatusCode::logged, sock); 
-							
-							std::cout << "connected user with login: " << login << std::endl;
-							std::cout << "password is: " << password << std::endl;
-
-							serv.sendLogin(sock, login);
-
-						}
-					}
-					if (command == "message") {
-						std::string incomeMsg = document["body"].GetString();
-						int id = std::stoi(document["id"].GetString());
-						std::cout << "income message: " << incomeMsg << std::endl;
-
-						serv.sendToAll(sock, incomeMsg, id);
-					}
+					serv.processComand(buf, sock);
 				}
 			}
 		}
@@ -131,17 +76,10 @@ void main()
 	FD_CLR(serv._listening, &master);
 	closesocket(serv._listening);
 
-	// Message to let users know what's happening.
-	std::string msg = "Server is shutting down. Goodbye\r\n";
-
 	while (master.fd_count > 0)
 	{
 		// Get the socket number
 		SOCKET sock = master.fd_array[0];
-
-		// Send the goodbye message
-		send(sock, msg.c_str(), msg.size() + 1, 0);
-
 		// Remove it from the master file list and close the socket
 		FD_CLR(sock, &master);
 		closesocket(sock);

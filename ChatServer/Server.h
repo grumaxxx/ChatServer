@@ -47,11 +47,26 @@ public:
 	
 	void sendHello(SOCKET sock);
 	void sendLogin(SOCKET sock, std::string login);
+	void sendLoginError(SOCKET sock, std::string login);
 	void sendToAll(SOCKET sock, std::string str, int id);
+	void sendPong(SOCKET sock, int id);
+	void sendLogout(SOCKET sock, int id);
+
+	void newConnection(char* buff, SOCKET sock);
+	void processComand(char* buff, SOCKET sock);
 
 	std::string getLogin(int id);
 
-
+	static int jsonLength(char* buff) {
+		int len = 0;
+		for (size_t i = 0; i < strlen(buff); ++i) {
+			if (buff[i] == '}') {
+				len = i + 1;
+				break;
+			}
+		}
+		return len;
+	}
 
 	std::vector<client> clients;
 private:
